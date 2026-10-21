@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "somame-core"
+version = "0.1.0"
+description = "The supervised agent runtime behind Somame: the write gate, provenance types, permission-mirrored retrieval, and reporting that leaves a blank rather than inventing a number."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Akrosystems Ltd" }]
+keywords = ["agents", "supervision", "provenance", "retrieval", "audit"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+# No runtime dependencies, deliberately. The parts of a system that decide
+# what needs a human should be auditable without reading a dependency tree.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "mypy>=1.11", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/akrosystems/somame"
+Issues = "https://github.com/akrosystems/somame/issues"
+
+[project.scripts]
+somame-core = "somame_core.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/somame_core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/somame_core"]
+strict = true
+warn_unreachable = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy
+      - run: pytest
+
+  honesty-gates:
+    # These do not test behaviour; they test that the behaviour cannot be
+    # removed quietly. Each one corresponds to a claim in the README.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+
+      - name: DataOrigin has no label for fabricated data
+        run: python -c "from somame_core import check_no_fabrication_member as c; c()"
+
+      - name: The mandatory escalation set has not shrunk
+        run: |
+          python - <<'PY'
+          from somame_core import MANDATORY_ESCALATIONS as M, ActionClass as A
+          expected = {A.DELETE, A.MOVE_MONEY, A.PUBLISH_EXTERNAL, A.CHANGE_ACCESS}
+          assert M == expected, f"Mandatory escalations changed: {M ^ expected}"
+          PY
+
+      - name: Nothing in the gate reads configuration
+        # The gate must not become settings-driven. If it imports os, json or a
+        # settings module, someone can turn it off from outside the code.
+        run: |
+          python - <<'PY'
+          import ast, pathlib
+          tree = ast.parse(pathlib.Path("src/somame_core/gate.py").read_text())
+          banned = {"os", "json", "configparser", "dotenv", "settings", "tomllib", "pathlib"}
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                  names = {a.name.split(".")[0] for a in node.names}
+              elif isinstance(node, ast.ImportFrom):
+                  names = {(node.module or "").split(".")[0]}
+              else:
+                  continue
+              bad = names & banned
+              assert not bad, f"gate.py must not read configuration: imports {bad}"
+          PY
+
+      - name: The library has no runtime dependencies
+        run: |
+          python - <<'PY'
+          import tomllib, pathlib
+          deps = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["dependencies"]
+          assert deps == [], f"somame-core must stay dependency-free; found {deps}"
+          PY
+
+      - name: The demo really is stopped by the gate
+        run: |
+          python -m somame_core.cli demo | tee /tmp/demo.txt
+          grep -q "Rows actually deleted: 0" /tmp/demo.txt
