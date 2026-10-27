@@ -1,6 +1,14 @@
 # Somame Core
 
-**MIT licensed.** The supervised agent runtime behind [Somame](https://somame.ai).
+**MIT licensed.** The supervised agent runtime behind [Somame](https://somame.ai) —
+the part that decides what an agent is allowed to do and what it is
+allowed to claim.
+
+[![CI](https://github.com/Akrosystems/somame/actions/workflows/ci.yml/badge.svg)](https://github.com/Akrosystems/somame/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/somame-core)](https://pypi.org/project/somame-core/)
+[![Python](https://img.shields.io/pypi/pyversions/somame-core)](https://pypi.org/project/somame-core/)
+[![Licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+[![Types](https://img.shields.io/badge/types-strict-blue)](pyproject.toml)
 
 Somame employs credentialed AI specialists into a company's workforce.
 The hosted platform — tenancy, billing, the workforce office, the role
@@ -9,10 +17,14 @@ is the part that decides what an agent is allowed to do and what it is
 allowed to claim, and it is open because those are the two things you
 should not have to take a vendor's word for.
 
-Somame Cloud depends on this package. Nothing here depends on Cloud.
+Somame Cloud depends on this package. Nothing here depends on Cloud, on
+a database, or on any third-party runtime dependency — on purpose. The
+part of a system that decides what needs a human should be auditable
+without reading a dependency tree.
 
 ```bash
 pip install somame-core
+
 somame-core gate     # the full decision table, every action at every level
 somame-core demo     # an agent on the most permissive setting tries to delete something
 ```
@@ -21,11 +33,12 @@ The name is from the Ghanaian *"soma me"* — "send me".
 
 ---
 
-## What is in here
+## The four ideas
 
-Four ideas, each small enough to read in full.
+Each is small enough to read in full, and each exists to prevent a
+specific failure mode.
 
-### 1. The Write Gate — `somame_core.gate`
+### 1. The write gate — `somame_core.gate`
 
 Four classes of action always return to a human, at **every** supervision
 level including the most autonomous one: `DELETE`, `MOVE_MONEY`,
@@ -115,18 +128,7 @@ Three rules:
 Every blank carries its reason, so a dash on a report is never
 ambiguous with a bug.
 
-A host that keeps per-day rollups rather than every task record uses
-`summarise_totals(Totals(...))`. It runs the same rule code as
-`summarise()` and differs in exactly one figure: the median, which
-cannot be recovered from sums and is reported as unavailable, with that
-reason, rather than approximated.
-
-```python
-week = Totals.sum(daily_totals)          # Totals add
-summarise_totals(week, cost=cost, hourly_rate=rate)
-```
-
-### Plus: the runner and the audit chain
+## Plus: the runner and the audit chain
 
 `somame_core.runtime` arranges things so a tool **cannot** be reached
 except through the gate. The agent never holds a tool; it returns an
@@ -149,7 +151,16 @@ the chain in its own database seals each row with
 `AuditEvent.chained(seq=..., prev=head_digest, ...)` and its export
 still verifies with `somame-core verify`.
 
----
+## API surface
+
+| Module | Exports | One line |
+| --- | --- | --- |
+| `gate` | `ActionClass`, `Reversibility`, `SupervisionLevel`, `MANDATORY_ESCALATIONS`, `INERT_ACTIONS`, `decide`, `requires_human`, `Decision` | What needs a human, and why |
+| `provenance` | `DataOrigin`, `Sourced`, `Unavailable`, `ProvenanceError`, `check_no_fabrication_member` | What may be stored as a measurement |
+| `runtime` | `Tool`, `Intent`, `Outcome`, `Runner`, `AsyncRunner`, `Approver`, `AsyncApprover`, `AlwaysAsk`, `DenyAll` | The supervised execution path |
+| `retrieval` | `RetrievalIndex`, `InMemoryIndex`, `Chunk`, `SearchHit`, `Principal`, `resolve_principals`, `IdentityUnresolved`, `AclStale` | Search that cannot leak |
+| `metrics` | `TaskRecord`, `Totals`, `Report`, `summarise`, `summarise_totals` | Figures that refuse to lie |
+| `audit` | `AuditEvent`, `AuditLog`, `GENESIS`, `TamperDetected` | The record that cannot be rewritten |
 
 ## Why this is the open half
 
@@ -159,36 +170,60 @@ allowed, and without it reporting progress it cannot substantiate. Both
 of those are claims about restraint, and a claim about restraint from a
 closed-source vendor is worth very little.
 
-So the restraint is here, readable, installable and testable on its own,
-under a licence that lets you fork it if we ever weaken it.
+So the restraint is here, readable, installable and testable on its
+own, under a licence that lets you fork it if we ever weaken it.
 
 What is **not** here, and is proprietary: the multi-tenant platform, the
 billing, the orbital workforce office, the 356-role credentialed
 catalog, the connector implementations, and the hosted operations.
 
----
+## Repository structure
+
+```
+src/somame_core/
+  gate.py         the decision function and the mandatory escalation set
+  provenance.py   DataOrigin, Sourced, Unavailable
+  runtime.py      Tool, Intent, Outcome, Runner, AsyncRunner
+  retrieval.py    permission-mirrored search protocol and reference index
+  metrics.py      summarise() and the honest-reporting rules
+  audit.py        hash-chained append-only log
+  cli.py          gate table, demo, verify
+tests/            140+ tests: no database, no network
+docs/
+  ARCHITECTURE.md how the modules fit together
+.github/
+  workflows/ci.yml  the gates, including "the escalation set has not shrunk"
+```
 
 ## Development
 
 ```bash
-git clone https://github.com/akrosystems/somame
+git clone https://github.com/Akrosystems/somame
 cd somame
 pip install -e ".[dev]"
-pytest          # 136 tests, no database, no network
+pytest          # no database, no network
 mypy            # strict
 ruff check src tests && ruff format --check src tests
 ```
 
-No runtime dependencies, on purpose. The part of a system that decides
-what needs a human should be auditable without reading a dependency
-tree.
+No runtime dependencies, on purpose.
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module map, the decision path, the audit chain, extension points |
+| [`CHANGELOG.md`](CHANGELOG.md) | Every notable change, per release |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to propose and land changes |
+| [`SECURITY.md`](SECURITY.md) | Reporting vulnerabilities |
 
 ## Status
 
 `0.2.0` — see [CHANGELOG.md](CHANGELOG.md). The interfaces in `gate`
 and `provenance` are the ones we consider settled; `runtime` and
 `retrieval` may still move. Breaking changes will go through a major
-version, and the mandatory escalation set will not shrink in any version.
+version, and the mandatory escalation set will not shrink in any
+version.
 
 ## Licence
 
