@@ -1,0 +1,7 @@
+# Normalise line endings in the repository regardless of the platform it was
+# edited on. Windows checkouts get CRLF in the working tree if configured;
+# what is committed is always LF.
+* text=auto eol=lf
+*.png binary
+*.webp binary
+*.ico binary

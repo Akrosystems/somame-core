@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from somame_core.metrics import TaskRecord, summarise
+import pytest
+
+from somame_core.metrics import TaskRecord, Totals, summarise, summarise_totals
 from somame_core.provenance import DataOrigin, Sourced, Unavailable
 
 BASE = Sourced(3600.0, DataOrigin.RETRIEVED, source="timesheet:2026-09")
@@ -97,3 +99,47 @@ def test_every_blank_line_carries_its_reason():
     for line in lines:
         if "—" in line:
             assert "(" in line and ")" in line
+
+
+# --- summarise_totals: the same rules from summed work ---------------------
+
+
+def test_totals_report_matches_the_record_report_except_the_median():
+    records = [done("t1", 600.0), done("t2", 900.0), TaskRecord("t3", "a1", False, 30.0, BASE)]
+    by_record = summarise(records, cost=COST, hourly_rate=RATE)
+    by_totals = summarise_totals(Totals.of(records), cost=COST, hourly_rate=RATE)
+    for field in (
+        "success_rate",
+        "mean_seconds",
+        "hours_returned",
+        "value_returned",
+        "net_return",
+        "return_on_cost",
+    ):
+        assert getattr(by_totals, field).value == getattr(by_record, field).value, field
+    assert by_record.median_seconds.value is not None
+    assert by_totals.median_seconds.value is None
+    assert "summed totals" in (by_totals.median_seconds.reason or "")
+
+
+def test_daily_totals_add_into_the_window():
+    day1 = Totals.of([done("t1", 600.0)])
+    day2 = Totals.of([done("t2", 600.0, base=Unavailable("none"))])
+    week = Totals.sum([day1, day2])
+    assert (week.completed, week.completed_without_baseline) == (2, 1)
+    # One day without a baseline blanks the whole window, as with records.
+    assert summarise_totals(week).hours_returned.value is None
+
+
+def test_no_totals_means_no_rate_and_no_median():
+    r = summarise_totals(Totals())
+    assert r.success_rate.value is None
+    assert r.median_seconds.value is None
+    assert "nothing" in (r.success_rate.reason or "").lower()
+
+
+def test_totals_that_contradict_themselves_are_refused():
+    with pytest.raises(ValueError, match="contradict"):
+        Totals(completed=1, completed_without_baseline=2)
+    with pytest.raises(ValueError):
+        Totals(failed=-1)

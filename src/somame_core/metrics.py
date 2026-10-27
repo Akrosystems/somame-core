@@ -13,17 +13,23 @@ lie that looks like a number:
   return on cost are arithmetic on an internal hourly cost that only
   the customer knows. There is no default and no estimator, because an
   ROI figure built on a vendor-chosen rate is marketing, not reporting.
+
+There are two ways in. :func:`summarise` takes individual task records.
+:func:`summarise_totals` takes :class:`Totals` a host has already summed —
+per-day rollups, typically — so a yearly report does not need a year of
+rows in memory. Both apply the same rules, in the same function, so the
+two can never disagree about what may be reported.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from statistics import median as _median
 
 from .provenance import DataOrigin, Sourced, Unavailable
 
-__all__ = ["Report", "TaskRecord", "summarise"]
+__all__ = ["Report", "TaskRecord", "Totals", "summarise", "summarise_totals"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +53,78 @@ class TaskRecord:
         if not base.is_evidence or base.value is None:
             return None
         return max(0.0, base.value - self.duration_seconds)
+
+
+@dataclass(frozen=True, slots=True)
+class Totals:
+    """A window's finished work, already summed.
+
+    Every field is a count, or a sum of measured values. Nothing here can
+    carry an estimate: a completed task without an evidential baseline is
+    *counted* in ``completed_without_baseline`` and contributes nothing to
+    ``saved_seconds``, which is what lets the hours-returned rule still be
+    applied after the individual records are gone.
+
+    Totals add, so a host can keep one per day and sum any window.
+    """
+
+    completed: int = 0
+    failed: int = 0
+    completed_seconds: float = 0.0
+    """Sum of the durations of the completed tasks."""
+    saved_seconds: float = 0.0
+    """Sum of time saved over completed tasks that do have an evidential baseline."""
+    completed_without_baseline: int = 0
+
+    def __post_init__(self) -> None:
+        for name in ("completed", "failed", "completed_without_baseline"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} cannot be negative.")
+        if self.completed_seconds < 0 or self.saved_seconds < 0:
+            raise ValueError("Durations cannot be negative.")
+        if self.completed_without_baseline > self.completed:
+            raise ValueError(
+                "More completed tasks lack a baseline than were completed; "
+                "the totals contradict each other."
+            )
+
+    @property
+    def attempted(self) -> int:
+        return self.completed + self.failed
+
+    def __add__(self, other: Totals) -> Totals:
+        return Totals(
+            completed=self.completed + other.completed,
+            failed=self.failed + other.failed,
+            completed_seconds=self.completed_seconds + other.completed_seconds,
+            saved_seconds=self.saved_seconds + other.saved_seconds,
+            completed_without_baseline=(
+                self.completed_without_baseline + other.completed_without_baseline
+            ),
+        )
+
+    @classmethod
+    def of(cls, records: Iterable[TaskRecord]) -> Totals:
+        completed = failed = without = 0
+        seconds = saved = 0.0
+        for r in records:
+            if not r.succeeded:
+                failed += 1
+                continue
+            completed += 1
+            seconds += r.duration_seconds
+            if r.saved_seconds is None:
+                without += 1
+            else:
+                saved += r.saved_seconds
+        return cls(completed, failed, seconds, saved, without)
+
+    @classmethod
+    def sum(cls, parts: Iterable[Totals]) -> Totals:
+        total = cls()
+        for part in parts:
+            total = total + part
+        return total
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,40 +196,80 @@ def summarise(
     A rate with any other origin is refused rather than used — that
     check is the whole point of threading provenance through to here.
     """
-    attempted = len(records)
-    done = [r for r in records if r.succeeded]
-    completed = len(done)
-    failed = attempted - completed
+    durations = [r.duration_seconds for r in records if r.succeeded]
+    if durations:
+        med: Sourced[float] = Sourced(
+            float(_median(durations)), DataOrigin.MEASURED, source="timer:task_duration"
+        )
+    else:
+        med = Unavailable("No completed task has been timed.")
+    return _report(Totals.of(records), med, cost, hourly_rate, window_label)
 
-    if attempted == 0:
+
+def summarise_totals(
+    totals: Totals,
+    *,
+    cost: Sourced[float] | None = None,
+    hourly_rate: Sourced[float] | None = None,
+    window_label: str = "window",
+) -> Report:
+    """The same report, from totals a host has already summed.
+
+    Identical to :func:`summarise` on the same work in every figure but
+    one: the median, which cannot be recovered from sums and is reported
+    as unavailable with that reason rather than approximated.
+    """
+    if totals.completed == 0:
+        med: Sourced[float] = Unavailable("No completed task has been timed.")
+    else:
+        med = Unavailable(
+            "A median needs every task's duration; this report was built from "
+            "summed totals, so only the mean is known."
+        )
+    return _report(totals, med, cost, hourly_rate, window_label)
+
+
+def _report(
+    totals: Totals,
+    median_seconds: Sourced[float],
+    cost: Sourced[float] | None,
+    hourly_rate: Sourced[float] | None,
+    window_label: str,
+) -> Report:
+    """The rules. One implementation, whichever way the work arrived."""
+    completed = totals.completed
+
+    if totals.attempted == 0:
         rate: Sourced[float] = Unavailable(
             f"No attempts in this {window_label}; a success rate would be a claim about nothing."
         )
     else:
-        rate = Sourced(completed / attempted, DataOrigin.MEASURED, source=f"tasks:{window_label}")
+        rate = Sourced(
+            completed / totals.attempted, DataOrigin.MEASURED, source=f"tasks:{window_label}"
+        )
 
     if completed == 0:
         mean: Sourced[float] = Unavailable("No completed task has been timed.")
-        med: Sourced[float] = Unavailable("No completed task has been timed.")
     else:
-        durations = [r.duration_seconds for r in done]
-        mean = Sourced(sum(durations) / completed, DataOrigin.MEASURED, source="timer:task_duration")
-        med = Sourced(float(_median(durations)), DataOrigin.MEASURED, source="timer:task_duration")
+        mean = Sourced(
+            totals.completed_seconds / completed, DataOrigin.MEASURED, source="timer:task_duration"
+        )
 
     # Hours returned are all-or-nothing on purpose. Summing only the
     # tasks that happen to have a baseline would understate the total
     # while looking like the total, which is worse than saying so.
-    without = [r for r in done if r.saved_seconds is None]
+    without = totals.completed_without_baseline
     if completed == 0:
         hours: Sourced[float] = Unavailable("Nothing has been completed yet.")
     elif without:
         hours = Unavailable(
-            f"{len(without)} of {completed} completed tasks have no human baseline on record "
+            f"{without} of {completed} completed tasks have no human baseline on record "
             "from a named source, so the total would be an undercount presented as a total."
         )
     else:
-        total = sum(r.saved_seconds or 0.0 for r in done)
-        hours = Sourced(total / 3600.0, DataOrigin.MEASURED, source="baseline:per_task")
+        hours = Sourced(
+            totals.saved_seconds / 3600.0, DataOrigin.MEASURED, source="baseline:per_task"
+        )
 
     known_cost = cost or Unavailable("No cost recorded for this window.")
 
@@ -192,10 +310,10 @@ def summarise(
 
     return Report(
         completed=completed,
-        failed=failed,
+        failed=totals.failed,
         success_rate=rate,
         mean_seconds=mean,
-        median_seconds=med,
+        median_seconds=median_seconds,
         hours_returned=hours,
         value_returned=value,
         net_return=net,

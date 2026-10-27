@@ -73,7 +73,18 @@ class DataOrigin(enum.Enum):
 #: Words that, appearing in an origin's name, would reopen the door this
 #: module exists to keep shut.
 FABRICATION_WORDS: Final[frozenset[str]] = frozenset(
-    {"sample", "demo", "mock", "fake", "placeholder", "dummy", "stub", "synthetic", "example", "estimated"}
+    {
+        "sample",
+        "demo",
+        "mock",
+        "fake",
+        "placeholder",
+        "dummy",
+        "stub",
+        "synthetic",
+        "example",
+        "estimated",
+    }
 )
 
 

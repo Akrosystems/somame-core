@@ -48,7 +48,9 @@ def test_irreversible_always_reaches_a_human_even_outside_the_mandatory_set():
     for action in ActionClass:
         if action in MANDATORY_ESCALATIONS or action in (ActionClass.READ, ActionClass.DRAFT):
             continue
-        assert requires_human(action, Reversibility.IRREVERSIBLE, SupervisionLevel.AUTONOMOUS_AUDITED)
+        assert requires_human(
+            action, Reversibility.IRREVERSIBLE, SupervisionLevel.AUTONOMOUS_AUDITED
+        )
 
 
 def test_reads_and_drafts_never_need_approval():

@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from .audit import AuditLog, TamperDetected
 from .gate import ActionClass, Reversibility, SupervisionLevel, decide
@@ -24,8 +26,10 @@ from .runtime import Intent, Runner, Tool
 def _gate_table(_: argparse.Namespace) -> int:
     """Print the whole decision surface. No surprises hidden in a branch."""
     levels = list(SupervisionLevel)
-    header = "action".ljust(18) + "reversibility".ljust(16) + "".join(
-        f"L{int(lv)}".ljust(10) for lv in levels
+    header = (
+        "action".ljust(18)
+        + "reversibility".ljust(16)
+        + "".join(f"L{int(lv)}".ljust(10) for lv in levels)
     )
     print(header)
     print("-" * len(header))
@@ -48,19 +52,21 @@ def _demo(_: argparse.Namespace) -> int:
     """A short run in which an agent tries to delete something."""
     deleted: list[str] = []
 
-    def do_delete(args):  # type: ignore[no-untyped-def]
+    def do_delete(args: Mapping[str, Any]) -> dict[str, Any]:
         deleted.append(str(args["row"]))
         return {"deleted": args["row"]}
 
-    def undo_delete(args, _result):  # type: ignore[no-untyped-def]
+    def undo_delete(args: Mapping[str, Any], _result: Any) -> None:
         deleted.remove(str(args["row"]))
 
-    def do_read(args):  # type: ignore[no-untyped-def]
+    def do_read(_args: Mapping[str, Any]) -> dict[str, Any]:
         return {"rows": 14}
 
     tools = [
-        Tool("count_duplicates", ActionClass.READ, Reversibility.REVERSIBLE, do_read, undo=lambda a, r: None),
-        Tool("delete_row", ActionClass.DELETE, Reversibility.REVERSIBLE, do_delete, undo=undo_delete),
+        Tool("count_duplicates", ActionClass.READ, Reversibility.REVERSIBLE, do_read),
+        Tool(
+            "delete_row", ActionClass.DELETE, Reversibility.REVERSIBLE, do_delete, undo=undo_delete
+        ),
     ]
 
     # Level 3 is the most permissive setting Somame offers.
@@ -83,8 +89,16 @@ def _demo(_: argparse.Namespace) -> int:
 
     # And the reporting half: a rate nobody stated produces no ROI.
     records = [
-        TaskRecord("t1", "demo-agent", True, 412.0, Sourced(3600.0, DataOrigin.RETRIEVED, source="timesheet:2026-09")),
-        TaskRecord("t2", "demo-agent", True, 890.0, Unavailable("No baseline recorded for this task.")),
+        TaskRecord(
+            "t1",
+            "demo-agent",
+            True,
+            412.0,
+            Sourced(3600.0, DataOrigin.RETRIEVED, source="timesheet:2026-09"),
+        ),
+        TaskRecord(
+            "t2", "demo-agent", True, 890.0, Unavailable("No baseline recorded for this task.")
+        ),
     ]
     print("Reporting over 2 completed tasks, one without a human baseline:\n")
     for line in summarise(records, window_label="demo").as_lines():
@@ -118,7 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     subs = parser.add_subparsers(dest="cmd", required=True)
 
     subs.add_parser("gate", help="Print the full decision table.").set_defaults(fn=_gate_table)
-    subs.add_parser("demo", help="Run an agent that tries to delete something.").set_defaults(fn=_demo)
+    subs.add_parser("demo", help="Run an agent that tries to delete something.").set_defaults(
+        fn=_demo
+    )
 
     v = subs.add_parser("verify", help="Verify an exported audit chain (JSONL).")
     v.add_argument("path")

@@ -52,7 +52,7 @@ def test_a_held_deletion_never_reaches_the_tool(spy):
     out = r.submit(Intent("delete_row", {"row": 1}, target="settlements/1"))
     assert not out.ran
     assert out.held
-    assert spy.calls == []           # the function was never called
+    assert spy.calls == []  # the function was never called
     assert len(r.held) == 1
 
 
@@ -64,8 +64,12 @@ def test_a_rejected_action_never_reaches_the_tool(spy):
 
 
 def test_an_approved_action_runs_and_records_who(spy):
-    r = Runner("a1", SupervisionLevel.APPROVE_EVERY_WRITE, [updater(spy)],
-               approver=lambda i, d: (True, "robert"))
+    r = Runner(
+        "a1",
+        SupervisionLevel.APPROVE_EVERY_WRITE,
+        [updater(spy)],
+        approver=lambda i, d: (True, "robert"),
+    )
     out = r.submit(Intent("set_field", {"x": 1}))
     assert out.ran
     assert out.approved_by == "robert"
@@ -78,8 +82,9 @@ def test_reads_run_without_an_approver(spy):
 
 
 def test_level_zero_blocks_a_write_even_with_a_willing_approver(spy):
-    r = Runner("a1", SupervisionLevel.READ_ONLY, [updater(spy)],
-               approver=lambda i, d: (True, "robert"))
+    r = Runner(
+        "a1", SupervisionLevel.READ_ONLY, [updater(spy)], approver=lambda i, d: (True, "robert")
+    )
     out = r.submit(Intent("set_field", {"x": 1}))
     assert out.decision.blocked
     assert not out.ran
@@ -130,10 +135,15 @@ def test_undo_reverses_and_is_logged(spy):
 
 
 def test_undo_returns_false_rather_than_raising_when_impossible():
-    tool = Tool("send_email", ActionClass.PUBLISH_EXTERNAL, Reversibility.IRREVERSIBLE,
-                lambda a: {"sent": True})
-    r = Runner("a1", SupervisionLevel.AUTONOMOUS_AUDITED, [tool],
-               approver=lambda i, d: (True, "robert"))
+    tool = Tool(
+        "send_email",
+        ActionClass.PUBLISH_EXTERNAL,
+        Reversibility.IRREVERSIBLE,
+        lambda a: {"sent": True},
+    )
+    r = Runner(
+        "a1", SupervisionLevel.AUTONOMOUS_AUDITED, [tool], approver=lambda i, d: (True, "robert")
+    )
     out = r.submit(Intent("send_email", {"to": "x@y.z"}))
     assert out.ran
     assert r.undo(out) is False
@@ -149,3 +159,19 @@ def test_the_default_approver_holds_rather_than_proceeds(spy):
     r = Runner("a1", SupervisionLevel.APPROVE_EVERY_WRITE, [updater(spy)])
     assert not r.submit(Intent("set_field", {"x": 1})).ran
     assert spy.calls == []
+
+
+def test_a_rejection_is_an_answer_not_a_hold(spy):
+    """A person saying no must not read as still waiting for a person."""
+    r = Runner("a1", SupervisionLevel.APPROVE_EVERY_WRITE, [updater(spy)], approver=DenyAll())
+    out = r.submit(Intent("set_field", {"x": 1}))
+    assert out.rejected
+    assert out.rejected_by == "policy:deny_all"
+    assert not out.held
+    assert r.held == []
+
+
+def test_a_read_needs_no_undo_to_be_declared_reversible(spy):
+    """Nothing to put back after a read, so nothing to supply."""
+    tool = Tool("peek", ActionClass.READ, Reversibility.REVERSIBLE, spy)
+    assert tool.undo is None

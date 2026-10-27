@@ -22,8 +22,13 @@ NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
 
 def chunk(cid, text, allow, vec=(1.0, 0.0), age=timedelta(minutes=1)):
     return Chunk(
-        id=cid, source="sharepoint", document=f"doc-{cid}", text=text,
-        vector=vec, allow=frozenset(allow), acl_read_at=NOW - age,
+        id=cid,
+        source="sharepoint",
+        document=f"doc-{cid}",
+        text=text,
+        vector=vec,
+        allow=frozenset(allow),
+        acl_read_at=NOW - age,
     )
 
 
@@ -34,11 +39,13 @@ ALICE = Principal("user", "alice")
 
 @pytest.fixture
 def index():
-    return InMemoryIndex([
-        chunk("c1", "Board pay review", [LEGAL]),
-        chunk("c2", "Supplier terms", [FINANCE, LEGAL]),
-        chunk("c3", "Petty cash policy", [FINANCE]),
-    ])
+    return InMemoryIndex(
+        [
+            chunk("c1", "Board pay review", [LEGAL]),
+            chunk("c2", "Supplier terms", [FINANCE, LEGAL]),
+            chunk("c3", "Petty cash policy", [FINANCE]),
+        ]
+    )
 
 
 def test_in_memory_index_satisfies_the_protocol():
@@ -81,10 +88,12 @@ def test_permissions_just_inside_the_ttl_are_served():
 
 
 def test_results_are_ordered_by_distance():
-    idx = InMemoryIndex([
-        chunk("far", "x", [FINANCE], vec=(0.0, 1.0)),
-        chunk("near", "x", [FINANCE], vec=(1.0, 0.0)),
-    ])
+    idx = InMemoryIndex(
+        [
+            chunk("far", "x", [FINANCE], vec=(0.0, 1.0)),
+            chunk("near", "x", [FINANCE], vec=(1.0, 0.0)),
+        ]
+    )
     hits = idx.search((1.0, 0.0), frozenset({FINANCE}), now=NOW)
     assert [h.chunk.id for h in hits] == ["near", "far"]
 

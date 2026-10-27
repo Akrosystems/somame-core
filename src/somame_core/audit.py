@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-__all__ = ["AuditEvent", "AuditLog", "TamperDetected"]
+__all__ = ["GENESIS", "AuditEvent", "AuditLog", "TamperDetected"]
 
 GENESIS = "0" * 64
 
@@ -63,6 +63,35 @@ class AuditEvent:
     def compute_digest(self) -> str:
         return hashlib.sha256(self.body().encode("utf-8")).hexdigest()
 
+    @classmethod
+    def chained(
+        cls,
+        *,
+        seq: int,
+        prev: str,
+        actor: str,
+        kind: str,
+        summary: str,
+        detail: dict[str, Any] | None = None,
+        at: str | None = None,
+    ) -> AuditEvent:
+        """The next event after ``prev``, sealed with its digest.
+
+        For hosts that keep the chain in their own store: they hold the
+        head (its sequence number and digest), not the whole log, and
+        still produce rows that :meth:`AuditLog.verify` accepts.
+        """
+        draft = cls(
+            seq=seq,
+            at=at or _now(),
+            actor=actor,
+            kind=kind,
+            summary=summary,
+            detail=dict(detail or {}),
+            prev=prev,
+        )
+        return cls(**{**asdict(draft), "digest": draft.compute_digest()})
+
 
 class AuditLog:
     """An in-memory append-only log.
@@ -97,16 +126,15 @@ class AuditLog:
         *,
         at: str | None = None,
     ) -> AuditEvent:
-        draft = AuditEvent(
+        event = AuditEvent.chained(
             seq=len(self._events),
-            at=at or _now(),
+            prev=self.head,
             actor=actor,
             kind=kind,
             summary=summary,
-            detail=dict(detail or {}),
-            prev=self.head,
+            detail=detail,
+            at=at,
         )
-        event = AuditEvent(**{**asdict(draft), "digest": draft.compute_digest()})
         self._events.append(event)
         return event
 

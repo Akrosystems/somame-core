@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 __all__ = [
+    "INERT_ACTIONS",
     "MANDATORY_ESCALATIONS",
     "ActionClass",
     "Decision",
@@ -88,7 +89,7 @@ MANDATORY_ESCALATIONS: Final[frozenset[ActionClass]] = frozenset(
 )
 
 #: Actions that change nothing and therefore never need a gate.
-_INERT: Final[frozenset[ActionClass]] = frozenset({ActionClass.READ, ActionClass.DRAFT})
+INERT_ACTIONS: Final[frozenset[ActionClass]] = frozenset({ActionClass.READ, ActionClass.DRAFT})
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +135,7 @@ def requires_human(
     level out of a database column does not have to coerce it first; the
     comparison is ordinal either way.
     """
-    if action in _INERT:
+    if action in INERT_ACTIONS:
         return False
     if action in MANDATORY_ESCALATIONS:
         return True
@@ -159,7 +160,7 @@ def decide(
     level = int(supervision_level)
     what = f"{action.value}" + (f" on {target}" if target else "")
 
-    if action in _INERT:
+    if action in INERT_ACTIONS:
         return Decision(
             allowed=True,
             needs_human=False,

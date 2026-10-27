@@ -10,8 +10,9 @@ Somame Cloud, the hosted platform, is separate and proprietary. It
 depends on this package; nothing here depends on it.
 """
 
-from .audit import AuditEvent, AuditLog, TamperDetected
+from .audit import GENESIS, AuditEvent, AuditLog, TamperDetected
 from .gate import (
+    INERT_ACTIONS,
     MANDATORY_ESCALATIONS,
     ActionClass,
     Decision,
@@ -21,7 +22,7 @@ from .gate import (
     decide,
     requires_human,
 )
-from .metrics import Report, TaskRecord, summarise
+from .metrics import Report, TaskRecord, Totals, summarise, summarise_totals
 from .provenance import (
     DataOrigin,
     ProvenanceError,
@@ -43,6 +44,8 @@ from .retrieval import (
 from .runtime import (
     AlwaysAsk,
     Approver,
+    AsyncApprover,
+    AsyncRunner,
     DenyAll,
     Intent,
     Outcome,
@@ -51,15 +54,19 @@ from .runtime import (
     ToolNotRegistered,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "ACL_TTL",
+    "GENESIS",
+    "INERT_ACTIONS",
     "MANDATORY_ESCALATIONS",
     "AclStale",
     "ActionClass",
     "AlwaysAsk",
     "Approver",
+    "AsyncApprover",
+    "AsyncRunner",
     "AuditEvent",
     "AuditLog",
     "Chunk",
@@ -84,6 +91,7 @@ __all__ = [
     "TaskRecord",
     "Tool",
     "ToolNotRegistered",
+    "Totals",
     "Unavailable",
     "__version__",
     "check_no_fabrication_member",
@@ -91,4 +99,5 @@ __all__ = [
     "requires_human",
     "resolve_principals",
     "summarise",
+    "summarise_totals",
 ]

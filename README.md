@@ -115,6 +115,17 @@ Three rules:
 Every blank carries its reason, so a dash on a report is never
 ambiguous with a bug.
 
+A host that keeps per-day rollups rather than every task record uses
+`summarise_totals(Totals(...))`. It runs the same rule code as
+`summarise()` and differs in exactly one figure: the median, which
+cannot be recovered from sums and is reported as unavailable, with that
+reason, rather than approximated.
+
+```python
+week = Totals.sum(daily_totals)          # Totals add
+summarise_totals(week, cost=cost, hourly_rate=rate)
+```
+
 ### Plus: the runner and the audit chain
 
 `somame_core.runtime` arranges things so a tool **cannot** be reached
@@ -123,10 +134,20 @@ except through the gate. The agent never holds a tool; it returns an
 A `Tool` declares its `ActionClass` and `Reversibility` as part of its
 identity.
 
-A `Runner` built without an approver **holds** rather than proceeds.
+A `Runner` built without an approver **holds** rather than proceeds. A
+person's refusal is recorded as such (`outcome.rejected`), never as a
+hold still waiting for an answer.
+
+`AsyncRunner` is the same runner for hosts on an event loop: tools,
+undo functions and the approver may be coroutines. Both runners share
+one implementation of the decision path, and a test asserts they write
+identical audit entries for identical intents.
 
 `somame_core.audit` is an append-only, hash-chained log. `verify()`
-says where an entry was edited, removed or reordered.
+says where an entry was edited, removed or reordered. A host that keeps
+the chain in its own database seals each row with
+`AuditEvent.chained(seq=..., prev=head_digest, ...)` and its export
+still verifies with `somame-core verify`.
 
 ---
 
@@ -153,9 +174,9 @@ catalog, the connector implementations, and the hosted operations.
 git clone https://github.com/akrosystems/somame
 cd somame
 pip install -e ".[dev]"
-pytest          # 125 tests, no database, no network
+pytest          # 136 tests, no database, no network
 mypy            # strict
-ruff check src tests
+ruff check src tests && ruff format --check src tests
 ```
 
 No runtime dependencies, on purpose. The part of a system that decides
@@ -164,10 +185,10 @@ tree.
 
 ## Status
 
-`0.1.0`. The interfaces in `gate` and `provenance` are the ones we
-consider settled; `runtime` and `retrieval` may still move. Breaking
-changes will go through a major version, and the mandatory escalation
-set will not shrink in any version.
+`0.2.0` — see [CHANGELOG.md](CHANGELOG.md). The interfaces in `gate`
+and `provenance` are the ones we consider settled; `runtime` and
+`retrieval` may still move. Breaking changes will go through a major
+version, and the mandatory escalation set will not shrink in any version.
 
 ## Licence
 

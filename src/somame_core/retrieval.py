@@ -41,6 +41,7 @@ __all__ = [
     "PrincipalSet",
     "RetrievalIndex",
     "SearchHit",
+    "resolve_principals",
 ]
 
 #: How long a mirrored ACL may be trusted before it must be re-read from

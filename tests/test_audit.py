@@ -65,3 +65,20 @@ def test_each_entry_links_to_the_one_before():
     log = built()
     assert log[1].prev == log[0].digest
     assert log[2].prev == log[1].digest
+
+
+def test_a_chain_sealed_one_event_at_a_time_verifies_like_one_built_in_memory():
+    """A host that stores only the head must produce the same chain."""
+    head, seq, events = GENESIS, 0, []
+    for actor, kind, summary in [("agent:a1", "decision", "held"), ("user:u1", "approval", "ok")]:
+        event = AuditEvent.chained(seq=seq, prev=head, actor=actor, kind=kind, summary=summary)
+        events.append(event)
+        head, seq = event.digest, seq + 1
+    AuditLog(events).verify()
+
+
+def test_a_sealed_event_cannot_be_reattached_elsewhere_in_the_chain():
+    first = AuditEvent.chained(seq=0, prev=GENESIS, actor="system", kind="write", summary="a")
+    stray = AuditEvent.chained(seq=1, prev=GENESIS, actor="system", kind="write", summary="b")
+    with pytest.raises(TamperDetected, match="removed or reordered"):
+        AuditLog([first, stray]).verify()
